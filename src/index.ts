@@ -5,8 +5,8 @@ import {
   type FileRouter,
 } from "uploadthing/express";
 import dotenv from "dotenv";
+import { UTApi } from "uploadthing/server";
 import multer from "multer";
-import { v2 as cloudinary } from "cloudinary";
 
 // Initialize dotenv first to load environment variables
 dotenv.config();
@@ -14,19 +14,33 @@ dotenv.config();
 const app = express();
 const port = 3000;
 
-// Configure Cloudinary after dotenv
-cloudinary.config({
-  cloud_name: 'dj4decnpa',
-  api_secret: process.env.API_SECRET,
-  api_key: process.env.API_KEY
-});
+enum fileType {
+  PDF,
+  DOC,
+  DOCX,
+  PPT,
+  PPTX,
+  XLS,
+  XLSX,
+  TXT,
+  MP4,
+  MKV,
+  AVI,
+  FLV,
+  MOV,
+}
 
 app.use(express.json());
 
+const utapi = new UTApi({
+  token: process.env.UPLOADTHING_TOKEN,
+});
+const storage = multer.memoryStorage()
+const upload = multer({storage})
 const uploadthing = createUploadthing();
 export const uploadRouter: FileRouter = {
   imageUploader: uploadthing({
-    image: {
+    blob: {
       maxFileSize: "1024MB",
       maxFileCount: 5,
     },
@@ -34,29 +48,24 @@ export const uploadRouter: FileRouter = {
     console.log(data);
   }),
 };
-
-
-const upload = multer({ dest: "uploads/" });
-
-app.post('/upload-multer', upload.any(), async (req, res) => {
+app.post("/api/upload",upload.array("files"), (req, res) => {
   try {
-    console.log(req.files); 
-    
-    if (req.files && Array.isArray(req.files) && req.files.length > 0) {
-      const result = await cloudinary.uploader.upload(req.files[0].path);
-      console.log(result);
-      res.json({ success: true, result });
-      return;
+    if (!req.files || !Array.isArray(req.files)) {
+      res.status(400).json({ message: "no files uploaded" });
     }
-    
-    res.status(400).json({ error: "No files uploaded" });
+
+    const fileToUpload =(req.files as Express.Multer.File[]).map((file)=>{
+      return new Blob([file.buffer],{type:file.mimetype}) as File
+    })
+    const uploadFile = utapi.uploadFiles(fileToUpload);
+    res
+      .status(200)
+      .json({ message: "Files uploaded successfully", uploadFile });
   } catch (error) {
-    console.error(error);
-    res.status(500).json({ error: "Upload failed" });
+    res.status(500).json({ message: "internal server error" });
   }
 });
-
-
+app.use("/uploadthing", createRouteHandler({ router: uploadRouter }));
 
 app.listen(port, () => {
   console.log(`Server running on port ${port}`);

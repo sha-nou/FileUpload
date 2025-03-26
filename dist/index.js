@@ -36,14 +36,21 @@ module.exports = __toCommonJS(index_exports);
 var import_express = __toESM(require("express"));
 var import_express2 = require("uploadthing/express");
 var import_dotenv = __toESM(require("dotenv"));
+var import_server = require("uploadthing/server");
+var import_multer = __toESM(require("multer"));
+import_dotenv.default.config();
 var app = (0, import_express.default)();
 var port = 3e3;
-import_dotenv.default.config();
 app.use(import_express.default.json());
+var utapi = new import_server.UTApi({
+  token: process.env.UPLOADTHING_TOKEN
+});
+var storage = import_multer.default.memoryStorage();
+var upload = (0, import_multer.default)({ storage });
 var uploadthing = (0, import_express2.createUploadthing)();
 var uploadRouter = {
   imageUploader: uploadthing({
-    image: {
+    blob: {
       maxFileSize: "1024MB",
       maxFileCount: 5
     }
@@ -51,9 +58,23 @@ var uploadRouter = {
     console.log(data);
   })
 };
-app.use("/upload", (0, import_express2.createRouteHandler)({ router: uploadRouter, config: { token: process.env.UPLOADTHING_TOKEN } }));
-app.listen(() => {
-  console.log(`sever running on port ${port}`);
+app.post("/api/upload", upload.array("files"), (req, res) => {
+  try {
+    if (!req.files || !Array.isArray(req.files)) {
+      res.status(400).json({ message: "no files uploaded" });
+    }
+    const fileToUpload = req.files.map((file) => {
+      return new Blob([file.buffer], { type: file.mimetype });
+    });
+    const uploadFile = utapi.uploadFiles(fileToUpload);
+    res.status(200).json({ message: "Files uploaded successfully", uploadFile });
+  } catch (error) {
+    res.status(500).json({ message: "internal server error" });
+  }
+});
+app.use("/uploadthing", (0, import_express2.createRouteHandler)({ router: uploadRouter }));
+app.listen(port, () => {
+  console.log(`Server running on port ${port}`);
 });
 // Annotate the CommonJS export names for ESM import in node:
 0 && (module.exports = {
